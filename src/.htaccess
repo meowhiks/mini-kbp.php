@@ -1,0 +1,5 @@
+# Deny HTTP access to PHP sources
+<IfModule mod_authz_core.c>
+  Require all denied
+</IfModule>
+Deny from all

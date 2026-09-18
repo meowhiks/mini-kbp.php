@@ -1,0 +1,15 @@
+# If the whole repo is the DocumentRoot by mistake, send traffic into public/
+# Prefer setting DocumentRoot to /public on the host when possible.
+
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # Deny internals at repo root
+  RewriteRule ^(?:src|cache|docker|tests|certs|scripts)(?:/|$) - [F,L]
+  RewriteRule "(^|/)\.(?!well-known)" - [F,L]
+
+  RewriteRule ^$ public/ [L]
+  RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>

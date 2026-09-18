@@ -1,0 +1,88 @@
+# Мини КБиП — https://mini-kbp.site
+# Контекст для ИИ: https://mini-kbp.site/llms.txt
+
+User-agent: *
+Allow: /
+Allow: /assets/
+Allow: /rasp/
+Allow: /llms.txt
+Allow: /sitemap.xml
+Disallow: /api/
+Disallow: /src/
+Disallow: /cache/
+Disallow: /config.php
+Disallow: /docker/
+Disallow: /tests/
+
+User-agent: Googlebot
+Allow: /
+Allow: /rasp/
+Disallow: /api/
+Disallow: /src/
+Disallow: /cache/
+
+User-agent: Yandex
+Allow: /
+Allow: /rasp/
+Disallow: /api/
+Disallow: /src/
+Disallow: /cache/
+
+# AI / LLM crawlers — allow schedule HTML + llms.txt for citation
+User-agent: GPTBot
+Allow: /
+Allow: /rasp/
+Allow: /llms.txt
+Disallow: /api/
+
+User-agent: ChatGPT-User
+Allow: /
+Allow: /rasp/
+Allow: /llms.txt
+Disallow: /api/
+
+User-agent: Google-Extended
+Allow: /
+Allow: /rasp/
+Allow: /llms.txt
+Disallow: /api/
+
+User-agent: Anthropic-AI
+Allow: /
+Allow: /rasp/
+Allow: /llms.txt
+Disallow: /api/
+
+User-agent: ClaudeBot
+Allow: /
+Allow: /rasp/
+Allow: /llms.txt
+Disallow: /api/
+
+User-agent: Claude-Web
+Allow: /
+Allow: /rasp/
+Allow: /llms.txt
+Disallow: /api/
+
+User-agent: PerplexityBot
+Allow: /
+Allow: /rasp/
+Allow: /llms.txt
+Disallow: /api/
+
+User-agent: Applebot-Extended
+Allow: /
+Allow: /rasp/
+Allow: /llms.txt
+Disallow: /api/
+
+User-agent: Bytespider
+Allow: /
+Allow: /rasp/
+Allow: /llms.txt
+Disallow: /api/
+
+Host: https://mini-kbp.site
+Sitemap: https://mini-kbp.site/sitemap.xml
+# Llms-Txt: https://mini-kbp.site/llms.txt

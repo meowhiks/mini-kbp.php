@@ -1,0 +1,20 @@
+# Copy to config.yml and fill tunnel id + credentials.json (both gitignored).
+tunnel: YOUR_TUNNEL_ID
+credentials-file: /etc/cloudflared/credentials.json
+
+ingress:
+  - hostname: mini-kbp.site
+    service: http://web:80
+    originRequest:
+      httpHostHeader: mini-kbp.site
+      connectTimeout: 30s
+      disableChunkedEncoding: true
+
+  - hostname: www.mini-kbp.site
+    service: http://web:80
+    originRequest:
+      httpHostHeader: mini-kbp.site
+      connectTimeout: 30s
+      disableChunkedEncoding: true
+
+  - service: http_status:404

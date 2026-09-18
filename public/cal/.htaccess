@@ -1,0 +1,17 @@
+# Public calendar feeds — serve as text/plain (CF often stalls text/calendar/.ics bodies)
+<IfModule mod_authz_core.c>
+  Require all granted
+</IfModule>
+<IfModule !mod_authz_core.c>
+  Order allow,deny
+  Allow from all
+</IfModule>
+
+<IfModule mod_mime.c>
+  RemoveType .ics
+  AddType text/plain .ics
+</IfModule>
+<IfModule mod_headers.c>
+  Header set Content-Type "text/plain; charset=utf-8"
+  Header set Content-Disposition "inline"
+</IfModule>

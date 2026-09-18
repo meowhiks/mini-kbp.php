@@ -1,0 +1,64 @@
+services:
+  web:
+    build: .
+    container_name: mini-kbp-php-web
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+      CERTBOT_EMAIL: ${CERTBOT_EMAIL:-admin@localhost}
+      ENABLE_CERTBOT: ${ENABLE_CERTBOT:-0}
+      KBP_BASE_URL: ${KBP_BASE_URL:-https://kbp.by/rasp/timetable/view_beta_kbp/}
+      APP_CACHE_DIR: /var/www/app/cache
+      APP_TZ: ${APP_TZ:-Europe/Minsk}
+    volumes:
+      - ./:/var/www/app
+      - ./certs/letsencrypt:/etc/letsencrypt
+      - ./certs/selfsigned:/etc/ssl/mini-kbp
+      - certbot-www:/var/www/certbot
+    restart: unless-stopped
+    healthcheck:
+      # HTTPS: .htaccess redirects plain HTTP → 301, which made curl -f fail and/or spam workers.
+      test: ["CMD", "curl", "-fsSk", "https://127.0.0.1/api/health.php"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # Public DNS via Cloudflare Tunnel (same tunnel as MiniKBP)
+  cloudflared:
+    image: cloudflare/cloudflared:2024.12.2
+    container_name: mini-kbp-php-tunnel
+    user: "0"
+    restart: unless-stopped
+    depends_on:
+      - web
+    command:
+      - tunnel
+      - --protocol
+      - http2
+      - --config
+      - /etc/cloudflared/config.yml
+      - run
+    volumes:
+      - ./docker/cloudflare:/etc/cloudflared:ro
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: mini-kbp-php-certbot
+    volumes:
+      - ./certs/letsencrypt:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    profiles: ["certbot"]
+    entrypoint: /bin/sh -c
+    command:
+      - |
+        trap exit TERM
+        while :; do
+          certbot renew --webroot -w /var/www/certbot --quiet || true
+          sleep 12h & wait $${!}
+        done
+
+volumes:
+  certbot-www:

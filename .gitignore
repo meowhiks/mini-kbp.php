@@ -1,0 +1,25 @@
+# Local / secrets
+.env
+.ftp-credentials
+config.php
+*.log
+*.pem
+
+# Runtime & build
+cache/*
+!cache/.gitkeep
+dist-ftp/
+certs/
+
+# Generated calendar feeds (served from /cal/)
+public/cal/*
+!public/cal/.htaccess
+!public/cal/.gitkeep
+public/assets/*.ics
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*~

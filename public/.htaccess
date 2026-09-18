@@ -1,0 +1,114 @@
+# MiniKBP PHP — Apache 2.4+ (shared hosting / FTP / Docker AllowOverride All)
+#
+# SpaceWeb: PHP 8.1+ (preferably 8.5) in panel. Do not set AddHandler here.
+
+Options -Indexes +FollowSymLinks
+DirectoryIndex index.php index.html
+AddDefaultCharset UTF-8
+ServerSignature Off
+
+# Hide PHP / internals
+<IfModule mod_authz_core.c>
+  <FilesMatch "(?i)^(config\.php|config\.example\.php|\.env|phpver\.php)$">
+    Require all denied
+  </FilesMatch>
+</IfModule>
+<IfModule !mod_authz_core.c>
+  <FilesMatch "(?i)^(config\.php|config\.example\.php|\.env|phpver\.php)$">
+    Deny from all
+  </FilesMatch>
+</IfModule>
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # www → apex (canonical SEO)
+  RewriteCond %{HTTP_HOST} ^www\.mini-kbp\.site$ [NC]
+  RewriteRule ^ https://mini-kbp.site%{REQUEST_URI} [L,R=301]
+
+  # Docker healthcheck (loopback) must not 301
+  RewriteCond %{REMOTE_ADDR} ^127\.0\.0\.1$ [OR]
+  RewriteCond %{REMOTE_ADDR} ^::1$
+  RewriteRule ^api/health\.php$ - [L]
+
+  # Cloudflare Tunnel talks HTTP to origin — NEVER 301 /api/* to HTTPS
+  # (redirect loop → CF "error code: 502", UI shows «Сервер временно недоступен»)
+  RewriteRule ^api/ - [L]
+
+  # Always HTTP → HTTPS for HTML/static (skip SpaceWeb temporary *.temp.swtest.ru)
+  RewriteCond %{HTTP_HOST} !\.temp\.swtest\.ru$ [NC]
+  RewriteCond %{HTTPS} !=on
+  RewriteCond %{HTTP:X-Forwarded-Proto} !https [NC]
+  RewriteCond %{HTTP:CF-Visitor} !https [NC]
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+  # Never expose internals / logs
+  RewriteRule ^(?:src|cache|docker|tests|certs|scripts|\.git)(?:/|$) - [F,L]
+
+  # Block hidden files except ACME challenges
+  RewriteRule "(^|/)\.(?!well-known)" - [F,L]
+
+  # SEO: dynamic sitemap + llms.txt (before static file pass-through)
+  RewriteRule ^sitemap\.xml$ sitemap.php [L]
+  RewriteRule ^llms\.txt$ llms.php [L]
+
+  # SSR timetable deep pages for crawlers / AI
+  RewriteRule ^rasp/(group|teacher|place)/([a-zA-Z0-9_\-]+)/([a-zA-Z0-9\-]+)/?$ rasp.php?type=$1&id=$2&slug=$3 [L,QSA]
+  RewriteRule ^rasp/(group|teacher|place)/([a-zA-Z0-9_\-]+)/?$ rasp.php?type=$1&id=$2 [L,QSA]
+
+  # Existing files/dirs pass through (robots.txt, og-default.png, assets…)
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Fallback SPA shell
+  RewriteRule ^ index.php [L]
+</IfModule>
+
+<IfModule mod_headers.c>
+  Header always unset X-Powered-By
+  Header unset X-Powered-By
+  Header set X-Content-Type-Options "nosniff"
+  Header set Referrer-Policy "strict-origin-when-cross-origin"
+  Header set X-Frame-Options "SAMEORIGIN"
+  Header set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+  Header set Content-Security-Policy "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; object-src 'none'; img-src 'self' data: https://mc.yandex.ru https://mc.yandex.com; font-src 'self' https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' https://mc.yandex.ru https://mc.yandex.com; connect-src 'self' https://mc.yandex.ru https://mc.yandex.com; worker-src 'self'; child-src blob: https://mc.yandex.ru https://mc.yandex.com; frame-src blob: https://mc.yandex.ru https://mc.yandex.com"
+  Header set X-MiniKBP-Node "mini-kbp-php"
+  Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains" env=HTTPS
+</IfModule>
+
+# SEO: cache robots / OG for crawlers & CDN (sitemap/llms set headers in PHP)
+<IfModule mod_headers.c>
+  <Files "robots.txt">
+    Header set Content-Type "text/plain; charset=UTF-8"
+    Header set Cache-Control "public, max-age=3600, must-revalidate"
+  </Files>
+  <Files "og-default.png">
+    Header set Cache-Control "public, max-age=86400"
+  </Files>
+</IfModule>
+
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType text/css "access plus 7 days"
+  ExpiresByType application/javascript "access plus 7 days"
+  ExpiresByType image/webp "access plus 30 days"
+  ExpiresByType image/png "access plus 30 days"
+  ExpiresByType image/svg+xml "access plus 30 days"
+  ExpiresByType text/html "access plus 0 seconds"
+  ExpiresByType text/plain "access plus 1 hour"
+  ExpiresByType application/xml "access plus 1 hour"
+</IfModule>
+
+<IfModule mod_mime.c>
+  AddType application/javascript .js
+  AddType text/css .css
+  AddType application/xml .xml
+  AddType text/plain .txt
+</IfModule>
+
+<IfModule mod_php.c>
+  php_flag display_errors Off
+  php_flag expose_php Off
+  php_value default_charset "UTF-8"
+</IfModule>
