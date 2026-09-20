@@ -14,6 +14,7 @@ use MiniKbp\RequestGuard;
 use MiniKbp\SearchService;
 use MiniKbp\RaspTimetableBuilder;
 use MiniKbp\TimetableParser;
+use MiniKbp\TimetableService;
 use MiniKbp\UpstreamRateLimiter;
 
 $failed = 0;
@@ -332,6 +333,33 @@ assert_true(($built['pairs'][0]['teacher'] ?? '') === 'Иванов И.И.', 'pa
 assert_true(($built['pairs'][0]['teacherFull'] ?? '') === 'Иванов Иван Иванович', 'pair teacherFull kept');
 assert_true(($built['pairs'][0]['day'] ?? -1) === 0 && ($built['pairs'][0]['pairNumber'] ?? 0) === 2, 'Mon pair 2 mapped');
 assert_true(($built['dayStartTimes'][0]['start'] ?? '') !== '', 'fillDayRanges set Monday start');
+assert_true(($built['pairs'][0]['refs']['group']['id'] ?? '') === '51', 'group ref keeps kbp entity id');
+assert_true(!isset($built['pairs'][0]['refs']['teachers'][0]['id']) || ($built['pairs'][0]['refs']['teachers'][0]['id'] ?? '') !== 't1', 'no rasp teacher id in refs');
+assert_true(!isset($built['pairs'][0]['refs']['subject']['id']) || ($built['pairs'][0]['refs']['subject']['id'] ?? '') !== 's1', 'no rasp subject id in refs');
+assert_true(($built['pairs'][0]['refs']['place']['id'] ?? '418') !== '418', 'place id is not raw room label');
+$dr = (string) ($built['currentWeek']['dateRange'] ?? '');
+assert_true($dr !== '' && !preg_match('/\d{2}\.\d{2}\.\d{4}/', $dr), 'dateRange uses kbp-style Russian months');
+
+echo "== TimetableService week cache ==\n";
+$now = time();
+assert_true(TimetableService::isSameIsoWeek($now), 'now is same ISO week');
+assert_true(TimetableService::isSameIsoWeek($now - 3600), '1h ago same week');
+// ~10 days ago almost always another ISO week
+assert_true(!TimetableService::isSameIsoWeek($now - 10 * 86400), '10 days ago different ISO week');
+
+$sun = new DateTimeImmutable('2026-09-20', new DateTimeZone('Europe/Minsk'));
+assert_true(
+    !TimetableService::isDateRangeStillCurrent('14 — 19 сентября', $sun),
+    'Sunday after Sat range → expired'
+);
+assert_true(
+    TimetableService::isDateRangeStillCurrent('21 — 26 сентября', $sun),
+    'Sunday before next week Sat → still current'
+);
+assert_true(
+    !TimetableService::isDateRangeStillCurrent('15.09.2026 — 20.09.2026', $sun->modify('+1 day')),
+    'numeric range expired after its Saturday'
+);
 
 $cachedSched = glob(dirname(__DIR__) . '/cache/rasp_sched_f_*.json') ?: [];
 if ($cachedSched !== []) {

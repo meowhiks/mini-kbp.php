@@ -10,6 +10,9 @@ final class TimetableService
     /** Serve expired cache when kbp.by is down (SpaceWeb often blocks egress). */
     public const STALE_MAX_AGE_SEC = 14 * 24 * 3600;
 
+    /** rasp fallback must not block kbp recovery for a full CACHE_TTL. */
+    public const RASP_CACHE_TTL_SEC = 1800;
+
     public function __construct(
         private readonly KbpClient $client = new KbpClient(),
         private readonly NameEnricher $enricher = new NameEnricher(),
@@ -211,10 +214,98 @@ final class TimetableService
             // Don't treat empty shells as usable cache
             return null;
         }
-        if ((time() - (int) $cached['savedAt']) >= $maxAgeSec) {
+        $savedAt = (int) $cached['savedAt'];
+        // Week rolled (Mon 00:00 Minsk) — last week's timetable must not be served as fresh.
+        if (!self::isSameIsoWeek($savedAt)) {
             return null;
         }
-        return ['savedAt' => (int) $cached['savedAt'], 'data' => $cached['data']];
+        // Sunday (and later): if cached dateRange's Saturday is already past, force refresh.
+        // ISO week alone still matches on Sunday while kbp may have rotated left_week.
+        if (!self::isDateRangeStillCurrent((string) ($cached['data']['currentWeek']['dateRange'] ?? ''))) {
+            return null;
+        }
+        $ttl = $maxAgeSec;
+        if (($cached['data']['source'] ?? '') === 'rasp.kbp.by') {
+            $ttl = min($ttl, self::RASP_CACHE_TTL_SEC);
+        }
+        if ((time() - $savedAt) >= $ttl) {
+            return null;
+        }
+        return ['savedAt' => $savedAt, 'data' => $cached['data']];
+    }
+
+    /** Whether $unixTs falls in the same ISO week as now (Europe/Minsk). */
+    public static function isSameIsoWeek(int $unixTs): bool
+    {
+        try {
+            $tz = new \DateTimeZone('Europe/Minsk');
+            $a = (new \DateTimeImmutable('@' . $unixTs))->setTimezone($tz);
+            $b = new \DateTimeImmutable('now', $tz);
+            return $a->format('o-W') === $b->format('o-W');
+        } catch (\Throwable) {
+            return true;
+        }
+    }
+
+    /**
+     * True when dateRange's Saturday is today or in the future (Europe/Minsk).
+     * Empty/unparsable ranges are treated as current (don't block cache).
+     */
+    public static function isDateRangeStillCurrent(string $dateRange, ?\DateTimeImmutable $now = null): bool
+    {
+        $saturday = self::parseDateRangeSaturday($dateRange, $now);
+        if ($saturday === null) {
+            return true;
+        }
+        try {
+            $tz = new \DateTimeZone('Europe/Minsk');
+            $today = ($now ?? new \DateTimeImmutable('now', $tz))->setTimezone($tz)->setTime(0, 0);
+            return $saturday >= $today;
+        } catch (\Throwable) {
+            return true;
+        }
+    }
+
+    /** @return \DateTimeImmutable|null Saturday (00:00 Minsk) of a «14 — 19 сентября» / «15.09.2026 — 20.09.2026» range */
+    public static function parseDateRangeSaturday(string $dateRange, ?\DateTimeImmutable $now = null): ?\DateTimeImmutable
+    {
+        $s = trim(preg_replace('/\s+/u', ' ', str_replace(["\u{2013}", "\u{2014}", '&mdash;'], '—', $dateRange)) ?? $dateRange);
+        if ($s === '') {
+            return null;
+        }
+        try {
+            $tz = new \DateTimeZone('Europe/Minsk');
+            $ref = ($now ?? new \DateTimeImmutable('now', $tz))->setTimezone($tz);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        $months = [
+            'января' => 1, 'февраля' => 2, 'марта' => 3, 'апреля' => 4,
+            'мая' => 5, 'июня' => 6, 'июля' => 7, 'августа' => 8,
+            'сентября' => 9, 'октября' => 10, 'ноября' => 11, 'декабря' => 12,
+        ];
+
+        if (preg_match('/^(\d{1,2})\.(\d{1,2})\.(\d{4})\s*—\s*(\d{1,2})\.(\d{1,2})\.(\d{4})$/u', $s, $m)) {
+            return (new \DateTimeImmutable(sprintf('%04d-%02d-%02d', (int) $m[6], (int) $m[5], (int) $m[4]), $tz))->setTime(0, 0);
+        }
+        if (preg_match('/^(\d{1,2})\s+([а-яё]+)\s*—\s*(\d{1,2})\s+([а-яё]+)(?:\s+(\d{4}))?$/iu', $s, $m)) {
+            $mon2 = $months[mb_strtolower($m[4])] ?? null;
+            if ($mon2 === null) {
+                return null;
+            }
+            $year = isset($m[5]) && $m[5] !== '' ? (int) $m[5] : (int) $ref->format('Y');
+            return (new \DateTimeImmutable(sprintf('%04d-%02d-%02d', $year, $mon2, (int) $m[3]), $tz))->setTime(0, 0);
+        }
+        if (preg_match('/^(\d{1,2})\s*—\s*(\d{1,2})\s+([а-яё]+)(?:\s+(\d{4}))?$/iu', $s, $m)) {
+            $mon = $months[mb_strtolower($m[3])] ?? null;
+            if ($mon === null) {
+                return null;
+            }
+            $year = isset($m[4]) && $m[4] !== '' ? (int) $m[4] : (int) $ref->format('Y');
+            return (new \DateTimeImmutable(sprintf('%04d-%02d-%02d', $year, $mon, (int) $m[2]), $tz))->setTime(0, 0);
+        }
+        return null;
     }
 
     /** @param array<string, mixed> $data */

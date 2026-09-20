@@ -970,6 +970,22 @@
       for (let d = d1; dates.length < 6; d++) dates.push(new Date(year, mon, d));
       return dates;
     }
+    const numeric = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})\s*—\s*(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+    if (numeric) {
+      const start = new Date(
+        Number.parseInt(numeric[3], 10),
+        Number.parseInt(numeric[2], 10) - 1,
+        Number.parseInt(numeric[1], 10)
+      );
+      if (Number.isNaN(start.getTime())) return [];
+      const dates = [start];
+      while (dates.length < 6) {
+        const next = new Date(dates[dates.length - 1]);
+        next.setDate(next.getDate() + 1);
+        dates.push(next);
+      }
+      return dates;
+    }
     return [];
   }
 
