@@ -28,6 +28,69 @@ final class Bootstrap
         if (!is_dir($logs)) {
             @mkdir($logs, 0775, true);
         }
+
+        self::maybeClearTimetableCacheOnSunday();
+    }
+
+    /**
+     * On Sunday (Europe/Minsk): delete tt_*.json once per calendar day.
+     * Marker file prevents repeat clears until next Sunday.
+     *
+     * @return bool true when this call performed the clear
+     */
+    public static function maybeClearTimetableCacheOnSunday(?\DateTimeImmutable $now = null): bool
+    {
+        try {
+            $tz = new \DateTimeZone(getenv('APP_TZ') ?: 'Europe/Minsk');
+            $now = ($now ?? new \DateTimeImmutable('now', $tz))->setTimezone($tz);
+            if ((int) $now->format('N') !== 7) {
+                return false;
+            }
+
+            $dir = self::cacheDir();
+            if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+                return false;
+            }
+
+            $day = $now->format('Y-m-d');
+            $marker = $dir . '/sunday_tt_cleared_' . $day;
+            if (is_file($marker)) {
+                return false;
+            }
+
+            // Exclusive create — only one request wins the Sunday clear.
+            $fp = @fopen($marker, 'x');
+            if ($fp === false) {
+                return false;
+            }
+            fwrite($fp, (string) time());
+            fclose($fp);
+
+            $cleared = 0;
+            foreach (glob($dir . '/tt_*.json') ?: [] as $path) {
+                if (is_file($path) && @unlink($path)) {
+                    $cleared++;
+                }
+            }
+
+            $cutoff = $now->modify('-21 days')->format('Y-m-d');
+            foreach (glob($dir . '/sunday_tt_cleared_*') ?: [] as $old) {
+                if ($old === $marker || !is_file($old)) {
+                    continue;
+                }
+                if (preg_match('/sunday_tt_cleared_(\d{4}-\d{2}-\d{2})$/', $old, $m) && $m[1] < $cutoff) {
+                    @unlink($old);
+                }
+            }
+
+            AppLog::info('cache.sunday_tt_clear', [
+                'day' => $day,
+                'cleared' => $cleared,
+            ]);
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /** Load config.php from project/docroot (next to src/) or account home (SpaceWeb). */

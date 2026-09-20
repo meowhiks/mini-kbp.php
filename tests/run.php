@@ -6,6 +6,7 @@ require dirname(__DIR__) . '/src/autoload.php';
 use MiniKbp\ClientRateLimit;
 use MiniKbp\DeliveryThrottle;
 use MiniKbp\BellSchedule;
+use MiniKbp\Bootstrap;
 use MiniKbp\FreeRooms;
 use MiniKbp\KeyboardLayout;
 use MiniKbp\MergeRows;
@@ -360,6 +361,30 @@ assert_true(
     !TimetableService::isDateRangeStillCurrent('15.09.2026 — 20.09.2026', $sun->modify('+1 day')),
     'numeric range expired after its Saturday'
 );
+
+echo "== Bootstrap Sunday tt cache clear ==\n";
+$tmpCache = sys_get_temp_dir() . '/mkbp_sun_cache_' . bin2hex(random_bytes(4));
+mkdir($tmpCache, 0775, true);
+putenv('APP_CACHE_DIR=' . $tmpCache);
+$_ENV['APP_CACHE_DIR'] = $tmpCache;
+file_put_contents($tmpCache . '/tt_group_51.json', '{"savedAt":1,"data":{"pairs":[1]}}');
+file_put_contents($tmpCache . '/tt_teacher_1.json', '{"savedAt":1,"data":{"pairs":[1]}}');
+file_put_contents($tmpCache . '/search_index_v1.json', '{}');
+$monday = new DateTimeImmutable('2026-09-21', new DateTimeZone('Europe/Minsk'));
+assert_true(!Bootstrap::maybeClearTimetableCacheOnSunday($monday), 'Monday → no clear');
+assert_true(is_file($tmpCache . '/tt_group_51.json'), 'Monday keeps tt cache');
+assert_true(Bootstrap::maybeClearTimetableCacheOnSunday($sun), 'Sunday clears once');
+assert_true(!is_file($tmpCache . '/tt_group_51.json') && !is_file($tmpCache . '/tt_teacher_1.json'), 'tt_*.json removed');
+assert_true(is_file($tmpCache . '/search_index_v1.json'), 'non-tt cache kept');
+assert_true(is_file($tmpCache . '/sunday_tt_cleared_2026-09-20'), 'marker written');
+assert_true(!Bootstrap::maybeClearTimetableCacheOnSunday($sun), 'second Sunday call skips');
+// cleanup
+foreach (glob($tmpCache . '/*') ?: [] as $f) {
+    @unlink($f);
+}
+@rmdir($tmpCache);
+putenv('APP_CACHE_DIR');
+unset($_ENV['APP_CACHE_DIR']);
 
 $cachedSched = glob(dirname(__DIR__) . '/cache/rasp_sched_f_*.json') ?: [];
 if ($cachedSched !== []) {
